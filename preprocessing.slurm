@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --nodes=4
-#SBATCH --ntasks=17
+#SBATCH --nodes=1
+#SBATCH --ntasks=9
 #SBATCH --mem=100g
 #SBATCH --output="logs/embedding.out"
 #SBATCH --error="logs/embedding.err"
@@ -8,7 +8,7 @@
 #SBATCH --partition=compute
 #SBATCH --job-name=Test
 #SBATCH --time=24:00:00 # hh:mm:ss for the job
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=8
 #SBATCH --mail-type=end
 #SBATCH --mail-type=fail
 
@@ -25,6 +25,9 @@ which python
 cd /data/chenhui_zhang/SemAttack || exit
 ifconfig
 
+ompi_info | grep -i "btl:"
+ompi_info | grep -i "mtl:"
+
 NODE_LIST=$( scontrol show hostname "$SLURM_JOB_NODELIST" | sed -z 's/\n/\:4,/g' )
 NODE_LIST=${NODE_LIST%?}
 
@@ -34,10 +37,10 @@ RANKFILE="./.cache/rankfile.txt"
 RANK=0
 NODE_INDEX=0
 for NODE in $(scontrol show hostname "$SLURM_JOB_NODELIST"); do
-    NUM_RANKS_PER_NODE=4
+    NUM_RANKS_PER_NODE=8
 
     if [ $NODE_INDEX -eq 0 ]; then
-        NUM_RANKS_PER_NODE=5
+        NUM_RANKS_PER_NODE=9
     fi
 
     SLOT=0
@@ -50,9 +53,8 @@ for NODE in $(scontrol show hostname "$SLURM_JOB_NODELIST"); do
 done
 
 echo "Job is starting on $(hostname) with $SLURM_NTASKS tasks on $NODE_LIST"
-for model in "chavinlo/alpaca-native" "eachadea/legacy-vicuna-13b" "TheBloke/stable-vicuna-13B-HF"
+for model in "meta-llama/Llama-2-7b-chat-hf" "chavinlo/alpaca-native" "eachadea/legacy-vicuna-13b" "TheBloke/stable-vicuna-13B-HF"
 do
     python attacks/tokenization.py --model "${model}"
 done
-mpiexec --mca btl vader,self,tcp -np "$SLURM_NTASKS" --rankfile $RANKFILE --oversubscribe python attacks/context_embedding.py
-
+mpiexec --mca btl vader,self,tcp -np "$SLURM_NTASKS" --rankfile $RANKFILE --oversubscribe python attacks/context_embedding.py --model meta-llama/Llama-2-7b-chat-hf
