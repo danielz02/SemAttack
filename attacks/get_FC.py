@@ -69,6 +69,58 @@ def get_input_embedding(batch):
     return batch
 
 
+def gather_embedding(dirname):
+    import os
+    import json
+    import numpy as np
+    from glob import glob
+    from tqdm import tqdm
+
+    fs = sorted(glob(f"{dirname}/pickles/*.npz"))
+
+    pointer = 0
+    word_list_selected = []
+    len_list = [0, ]
+    s = np.zeros((13928506, 4096), dtype=np.float32)
+    print(len(s))
+
+    for f in tqdm(fs):
+        word, _ = os.path.basename(f).split(".")
+        try:
+            locs_and_data = np.load(f)
+            if np.all(locs_and_data['points'] == 0):
+                continue
+            mask = ~np.all(locs_and_data['points'] == 0, axis=1)
+            cur_len = locs_and_data['points'][mask].shape[0]
+            s[pointer:pointer + cur_len] = locs_and_data["points"][mask]
+        except ValueError as e:
+            print(e)
+            continue
+        except IndexError as e:
+            print(e)
+            continue
+        word_list_selected += [word] * cur_len
+        pointer = pointer + cur_len
+        len_list.append(pointer)
+
+    s = s[:pointer]
+    len_list = np.array(len_list)
+    word_list_selected = np.array(word_list_selected)
+    print(len(s), pointer)
+    np.save(f'{dirname}/word_list.npy', word_list_selected)
+    np.save(f'{dirname}/len_list.npy', len_list)
+
+    filtered_words = []
+    for word in os.listdir(f'{dirname}/pickles/'):
+        word, _ = word.split('.')
+        filtered_words.append(word)
+
+    with open(f'{dirname}/filtered_words.json', 'w') as outfile:
+        json.dump(filtered_words, outfile)
+
+    return s, word_list_selected
+
+
 if __name__ == '__main__':
     # Set the random seed manually for reproducibility.
 
@@ -76,13 +128,10 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
 
     device = torch.device("cuda")
-    tokenizer = AutoTokenizer.from_pretrained(args.model, cache_dir=args.cache_dir, torch_dtype=torch.bfloat16)
-
-    word_list = np.load(args.word_list).reshape(-1)
-    word_list_set = set(word_list)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, torch_dtype=torch.bfloat16)
 
     m = 8  # number of centroid IDs in final compressed vectors
-    d = 5120
+    d = 4096
     nlist = 50
     bits = 8  # number of bits in each centroid
     res = faiss.StandardGpuResources()
@@ -90,8 +139,15 @@ if __name__ == '__main__':
     if os.path.exists(index_path):
         index = faiss.read_index(index_path)
         gpu_index = faiss.index_cpu_to_gpu(res, 0, index)
+        word_list = np.load(args.word_list).reshape(-1)
     else:
-        embedding_space = torch.from_numpy(np.load(args.embedding_space))
+        if not os.path.exists(args.embedding_space):
+            embeddings, word_list = gather_embedding(os.path.join("./static", args.model))
+        else:
+            embeddings = np.load(args.embedding_space)
+            word_list = np.load(args.word_list).reshape(-1)
+
+        embedding_space = torch.from_numpy(embeddings)
         quantizer = faiss.IndexFlatL2(d)  # we keep the same L2 distance flat index
         index = faiss.IndexIVFPQ(quantizer, d, nlist, m, bits)
         gpu_index = faiss.index_cpu_to_gpu(res, 0, index)
@@ -99,23 +155,27 @@ if __name__ == '__main__':
         gpu_index.add(embedding_space)
         faiss.write_index(faiss.index_gpu_to_cpu(gpu_index), index_path)
 
-    data_path = os.path.join(args.cache_dir, "glue-preprocessed-benign", args.model, args.task)
-    embedding_path = os.path.join(args.cache_dir, "glue-embedding-benign", args.model, args.task)
+    word_list_set = set(word_list)
+    data_path = os.path.join(args.cache_dir, "glue-preprocessed-benign", args.model, args.task, args.split)
+    embedding_path = os.path.join(args.cache_dir, "glue-embedding-benign", args.model, args.task, args.split)
 
     if os.path.exists(embedding_path):
         test_data = load_from_disk(embedding_path)
         test_data.set_format("pt")
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model, cache_dir=args.cache_dir)
+        model = AutoModelForCausalLM.from_pretrained(args.model)
         model.eval()
         model = model.to(device)
 
         test_data = load_from_disk(data_path)
         test_data.set_format("pt")
+        if len(test_data) > args.max_length:
+            test_data = test_data.train_test_split(test_size=args.max_length, seed=args.seed)["test"]
         test_data = test_data.map(get_input_embedding, num_proc=1, with_rank=False, batched=True, batch_size=16)
-        test_data.save_to_disk(embedding_path)
+        # test_data.save_to_disk(embedding_path)
 
     test_data = test_data.map(get_similar_dict, num_proc=1, with_rank=False)
     if "input_embeddings" in test_data.column_names:
         test_data = test_data.remove_columns(["input_embeddings"])
-    test_data.save_to_disk(os.path.join("./adv-glue", args.model, args.task, "FC"))
+    test_data.save_to_disk(os.path.join("./adv-glue", args.model, args.task, args.split, "FC"))
+    print(f'Saving to {os.path.join("./adv-glue", args.model, args.task, args.split, "FC")}')

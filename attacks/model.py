@@ -17,7 +17,7 @@ from tokenization import TASK_DESCRIPTION
 class LlamaForZeroShotSequenceClassification(nn.Module):
     def __init__(self, config, cache_dir, torch_compile=False, dtype=torch.bfloat16):
         super().__init__()
-        self.model = LlamaForCausalLM.from_pretrained(config, cache_dir=cache_dir, torch_dtype=dtype)
+        self.model = LlamaForCausalLM.from_pretrained(config, torch_dtype=dtype)
         self.hidden_size = self.model.config.hidden_size
         self.vocab_size = self.model.config.vocab_size
         if torch_compile:
@@ -176,10 +176,11 @@ def test():
     model.to(device=device).eval()
 
     for task in TASK_DESCRIPTION.keys():
-        data_dir = os.path.join(args.cache_dir, f"glue-preprocessed-benign", args.model, task)
+        data_dir = os.path.join(args.cache_dir, "glue-preprocessed-benign", args.model, task, args.split)
         print("Loading data from", data_dir)
         test_data = load_from_disk(data_dir)
-        test_data.set_format("pt", output_all_columns=True)
+        test_data.set_format("pt",)
+        print(test_data)
 
         generation_predictions = []
         dev_predictions = []
@@ -191,7 +192,7 @@ def test():
             dev_labels.append(data["label"].item())
         print(task, np.mean(np.array(dev_labels) == np.array(dev_predictions)))
 
-        dest_path = os.path.join(f"./adv-glue/", args.model, task, "benign-zeroshot.json")
+        dest_path = os.path.join(f"./adv-glue/", args.model, task, args.split, "benign-zeroshot.json")
         if not os.path.exists(os.path.dirname(dest_path)):
             os.makedirs(os.path.dirname(dest_path))
         with open(dest_path, "w") as f:

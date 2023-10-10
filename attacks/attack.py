@@ -6,7 +6,7 @@ import torch
 import joblib
 import numpy as np
 from tqdm import tqdm
-from CW_attack import CarliniL2
+from attacks.CW_attack import CarliniL2
 from datasets import load_dataset
 from transformers import AutoTokenizer
 from torch.utils.data import DataLoader
@@ -320,7 +320,8 @@ def main():
         assert args.fix_sentence == 1
 
     args.output_dir = os.path.join(
-        args.output_dir, args.model, args.task, "l1" if args.l1 else "l2", f"fix_{args.fix_sentence}"
+        args.output_dir, args.model, args.task, args.split, "l1" if args.l1 else "l2",
+        f"fix_{args.fix_sentence}", str(args.shard)
     )
     print(f"saving to {args.output_dir}")
     if args.tf32:
@@ -344,16 +345,22 @@ def main():
 
     # Set the random seed manually for reproducibility.
     util.set_seed(args.seed)
-    if args.task == 'mnli':
-        split = 'validation_matched'
-    elif args.task == 'mnli-mm':
-        split = 'validation_mismatched'
+    if args.split == "train":
+        split = "train"
     else:
-        split = "validation"
+        if args.task == 'mnli':
+            split = 'validation_matched'
+        elif args.task == 'mnli-mm':
+            split = 'validation_mismatched'
+        else:
+            split = "validation"
 
     test_data = load_dataset("glue", args.task.replace("-mm", ""), cache_dir=args.cache_dir, split=split)
-    test_data = test_data.load_from_disk(os.path.join("./adv-glue/", args.model, args.task, "FC_FT_FK"))
+    test_data = test_data.load_from_disk(os.path.join("./adv-glue/", args.model, args.task, args.split, "FC_FT_FK"))
     test_data.set_format("pt")
+
+    if args.shard != -1:
+        test_data = test_data.shard(num_shards=args.num_shard, index=args.shard)
 
     cw_word_attack(test_data, args, model, tokenizer, device, logger)
 

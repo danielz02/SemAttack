@@ -45,6 +45,11 @@ def get_args():
     parser.add_argument('--task', type=str, default='sst2',
                         choices=['cola', 'sst2', 'mrpc', 'stsb', 'qqp', 'mnli', 'mnli-mm', 'qnli', 'rte', 'wnli'],
                         help='GLUE tasks')
+    parser.add_argument('--split', type=str, default='validation',
+                        choices=['train', 'validation'], help='GLUE tasks')
+    parser.add_argument('--max_length', type=int, default=10000, help='max length for a dataset')
+    parser.add_argument('--shard', type=int, default=-1, help='shard index')
+    parser.add_argument('--num_shard', type=int, default=-1, help='number of shards')
     parser.add_argument("--model", type=str, default='chavinlo/alpaca-native')
     parser.add_argument("--output_dir",
                         type=str,

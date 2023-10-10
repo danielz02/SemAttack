@@ -34,19 +34,17 @@ ALPACA_PROMPT_TEMPLATE = "Below is an instruction that describes a task, paired 
                          "context. Write a response that appropriately completes the request.\n\n" \
                          "### Instruction:\n{instruction}\n\n### Input:\n<i>{input}</i>\n\n### Response:<l>{label} </s>"
 
-
 VICUNA_PROMPT_TEMPLATE = """\
 ### Human: {instruction}\n<i>{input}</i>
 ### Assistant: <l>{label}
 """
 
-LLAMA2_PROMPT_TEMPLATE = """<s>[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as 
-helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, 
-toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in 
-nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering 
-something not correct. If you don't know the answer to a question, please don't share false 
-information.\n<</SYS>>\n\n{instruction} <i>{input}</i>[/INST] <l>{label} </s><s>
-"""
+LLAMA2_PROMPT_TEMPLATE = "<s>[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as " \
+                         "helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, " \
+                         "toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in " \
+                         "nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering " \
+                         "something not correct. If you don't know the answer to a question, please don't share false " \
+                         "information.\n<</SYS>>\n\n{instruction} <i>{input}</i>[/INST] <l>{label} </s><s>"
 
 GLUE_TASK_TO_KEYS = {
     "cola": ("sentence", None),

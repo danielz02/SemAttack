@@ -86,8 +86,9 @@ def get_embeddings(word, sentences, model, tokenizer, device):
     max_len = 512
     for sentence in sentences:
         # sentence = '<s> ###Human: ' + sentence + ' </s>'  # Changed to LlaMA bos and eos tokens
-        sentence = '<s> ###Human: ' + sentence + ' </s>'
-        tokenized_text = tokenizer.tokenize(sentence)  # </s> is not added automatically when calling tokenizer.tokenize
+        # sentence = '<s> ###Human: ' + sentence + ' </s>'
+        tokenized_text = tokenizer.tokenize(sentence + ' </s>')
+        # </s> is not added automatically when calling tokenizer.tokenize
 
         # Convert token to vocabulary indices
         indexed_tokens = tokenizer.convert_tokens_to_ids(tokenized_text)
@@ -209,7 +210,7 @@ def get_poses(word, sentences):
 
 def init_models():
     # FIXME: This only works with the current rankfile
-    gpu_dev = int(local_rank) - 1 if rank <= 4 else int(local_rank)
+    gpu_dev = int(local_rank) - 1 if rank <= 8 else int(local_rank)
     device = torch.device(f"cuda:{gpu_dev}" if torch.cuda.is_available() else "cpu")
     print(f"rank {rank} device : {device}")
 
@@ -217,7 +218,7 @@ def init_models():
     tokenizer = AutoTokenizer.from_pretrained(args.model, cache_dir=args.cache_dir)
     # Load pre-trained model (weights)
     model = AutoModelForCausalLM.from_pretrained(
-        args.model, cache_dir=args.cache_dir, torch_dtype=torch.bfloat16
+        args.model, torch_dtype=torch.bfloat16, use_auth_token=True,
     )
     model.eval()
     model = model.to(device=device)
@@ -243,11 +244,14 @@ def load_sentences():
 
 
 def main():
-    # Get selection of sentences from wikipedia.
+    # Get selection of sentencesauth_token from wikipedia.
     words, sentences = load_sentences()
 
     closed_workers = 0
     num_workers = size - 1
+
+    if not os.path.join("./static", args.model, "pickles"):
+        os.makedirs(os.path.join("./static", args.model, "pickles"))
 
     while closed_workers < num_workers:
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
@@ -322,7 +326,7 @@ def worker():
             for task_index in tqdm(data, desc=f"Rank {rank}"):
                 word = words[task_index]
 
-                if os.path.join("./static", args.model, "pickles", f"{word}.npz"):
+                if os.path.exists(os.path.join("./static", args.model, "pickles", f"{word}.npz")):
                     print(f'[{rank}] Skipping {word}')
                     continue
 
